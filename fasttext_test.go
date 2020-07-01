@@ -7,7 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func Test_BuildDB_and_GetEmb(t *testing.T) {
+func Test_BuildDB_and_GetEmb_and_GetAllEmb(t *testing.T) {
 	ft := NewFastText(":memory:")
 	defer ft.Close()
 
@@ -37,5 +37,8 @@ func Test_BuildDB_and_GetEmb(t *testing.T) {
 			t.Error("Should return not found")
 		}
 	}
-}
 
+	if _, err := ft.GetAllEmb(); err != nil {
+		t.Error(err)
+	}
+}

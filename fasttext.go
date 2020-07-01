@@ -132,6 +132,29 @@ func (ft *FastText) GetEmb(word string) ([]float64, error) {
 	return bytesToVec(binVec, ByteOrder)
 }
 
+// GetAllEmb returns all embedding vectors
+func (ft *FastText) GetAllEmb() ([][]float64, error) {
+	rows, err := ft.db.Query(`SELECT emb FROM fasttext;`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var allEmbeddings [][]float64
+	for isNext := rows.Next(); isNext; isNext = rows.Next() {
+		var binVec []byte
+		if err := rows.Scan(&binVec); err != nil {
+			return nil, err
+		}
+		embedding, err := bytesToVec(binVec, ByteOrder)
+		if err != nil {
+			return nil, err
+		}
+		allEmbeddings = append(allEmbeddings, embedding)
+	}
+	return allEmbeddings, nil
+}
+
 // BuildDB initialize the SQLite3 database by importing the word embeddings
 // from the .vec file downloaded from
 // https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md
