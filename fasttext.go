@@ -21,13 +21,13 @@ This will create a new file on your disk for the SQLite3 database.
 Once the above step is finished, you can start looking up word embeddings
 (in your code):
 
-	emb, err := ft.GetEmb("king")
+	embeddingVector, err := ft.GetEmb("king")
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(emb)
+	fmt.Println(embeddingVector)
 
-Each word embedding vector is a slice of float64 with length of 300.
+Each word's embedding vector is a slice of float64 with length of 300.
 
 Note that you only need to initialize the SQLite3 database once.
 The next time you use it you can skip the call to BuildDB.
