@@ -1,22 +1,21 @@
 /*
-Package fasttext provides a simple wrapper for Facebook
-fastText dataset (https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md).
+Package fasttext provides a simple wrapper for working models trained with Facebook's fastText library.
 It allows fast look-up of word embeddings from persistent data store (SQLite3).
 
 Installation
 
-	go get -u github.com/ekzhu/go-fasttext
+	go get -u github.com/justinfargnoli/go-fasttext
 
-After downloading a .vec data file from the fastText project,
+After training a model or downloading a '*.vec' data file from the fastText project,
 you can initialize the SQLite3 database (in your code):
 
 	import (
 		_ "github.com/mattn/go-sqlite3"
-		"github.com/ekzhu/go-fasttext"
+		"github.com/justinfargnoli/go-fasttext"
 	)
 	...
-	ft := fasttext.NewFastText("/path/to/sqlite3/file")
-	err := ft.BuilDB("/path/to/word/embedding/.vec/file")
+	ft := fasttext.New("/path/to/sqlite3/file")
+	err := ft.Build("/path/to/word/embedding/.vec/file")
 
 This will create a new file on your disk for the SQLite3 database.
 Once the above step is finished, you can start looking up word embeddings
@@ -79,9 +78,9 @@ type FastText struct {
 	db *sql.DB
 }
 
-// NewFastText starts a new FastText session given the location
+// New starts a new FastText session given the location
 // of the SQLite3 database file.
-func NewFastText(dbFilename string) *FastText {
+func New(dbFilename string) *FastText {
 	db, err := sql.Open("sqlite3", dbFilename)
 	if err != nil {
 		panic(err)
@@ -91,12 +90,12 @@ func NewFastText(dbFilename string) *FastText {
 	}
 }
 
-// NewFastTextInMem creates a new FastText session that uses
+// NewInMemory creates a new FastText session that uses
 // an in-memory database for faster query time.
 // The on-disk SQLite3 database (given by dbFilename) will be loaded into
 // an in-memory SQLite3 database in this function, which
 // will take a few miniutes to finish.
-func NewFastTextInMem(dbFilename string) *FastText {
+func NewInMemory(dbFilename string) *FastText {
 	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
 	_, err = db.Exec(fmt.Sprintf(`ATTACH DATABASE '%s' AS disk;`, dbFilename))
 	if err != nil {
@@ -115,10 +114,10 @@ func NewFastTextInMem(dbFilename string) *FastText {
 	}
 }
 
-// BuildDB initialize the SQLite3 database by importing the word embeddings
+// Build initialize the SQLite3 database by importing the word embeddings
 // from the .vec file downloaded from
 // https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md
-func (ft *FastText) BuildDB(wordEmbFile io.Reader) error {
+func (ft *FastText) Build(wordEmbFile io.Reader) error {
 	_, err := ft.db.Exec(`
 	CREATE TABLE fasttext(
 		word TEXT UNIQUE,
@@ -152,8 +151,8 @@ func (ft *FastText) Close() error {
 	return ft.db.Close()
 }
 
-// GetEmb returns the word embedding of the given word.
-func (ft *FastText) GetEmb(word string) ([]float64, error) {
+// EmbeddingVector returns the word embedding of the given word.
+func (ft *FastText) EmbeddingVector(word string) ([]float64, error) {
 	var binVec []byte
 	err := ft.db.QueryRow(`SELECT emb FROM fasttext WHERE word=?;`, word).Scan(&binVec)
 	if err == sql.ErrNoRows {
@@ -165,8 +164,8 @@ func (ft *FastText) GetEmb(word string) ([]float64, error) {
 	return bytesToVec(binVec, ByteOrder)
 }
 
-// GetAllEmb returns all embedding vectors
-func (ft *FastText) GetAllEmb() ([][]float64, error) {
+// AllEmbeddingVectors returns all embedding vectors
+func (ft *FastText) AllEmbeddingVectors() ([][]float64, error) {
 	rows, err := ft.db.Query(`SELECT emb FROM fasttext;`)
 	if err != nil {
 		return nil, err
@@ -188,8 +187,11 @@ func (ft *FastText) GetAllEmb() ([][]float64, error) {
 	return allEmbeddings, nil
 }
 
-func (ft *FastText) mostSimilarEmbedding(queryEmbedding []float64) ([]float64, float64, error) {
-	embeddings, err := ft.GetAllEmb()
+// MostSimilarEmbeddingVector returns the embedding vector which is most similar to the one passed
+//
+// Errors from FastText.GetAllEmb() and cosine_similarity.Cosine() will be propogated.
+func (ft *FastText) MostSimilarEmbeddingVector(queryEmbedding []float64) ([]float64, float64, error) {
+	embeddings, err := ft.AllEmbeddingVectors()
 	if err != nil {
 		return nil, 0.0, err
 	}
@@ -215,12 +217,15 @@ func (ft *FastText) mostSimilarEmbedding(queryEmbedding []float64) ([]float64, f
 	return mostSimilar, highestSimilarity, nil
 }
 
-// computes an embedding vector by taking the average of the embedding vectors of each word
-// in words
-func (ft *FastText) newMultiWordEmbedding(words []string) (vector.Vector, error) {
+// MultiWordEmbeddingVector builds an embedding vector to represent the array of words passed to it.
+//
+// This is done by averaging the embedding vector of each string in the array.
+//
+// If a string in words is not in the database, then an error indicator is returned.
+func (ft *FastText) MultiWordEmbeddingVector(words []string) (vector.Vector, error) {
 	var multiWordEmbedding []float64
 	for i, v := range words {
-		embeddingVector, errEmbeddingVector := ft.GetEmb(v)
+		embeddingVector, errEmbeddingVector := ft.EmbeddingVector(v)
 		if errEmbeddingVector != nil {
 			return nil, errEmbeddingVector
 		}
