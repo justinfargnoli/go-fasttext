@@ -49,6 +49,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/atedja/go-vector"
+	"github.com/gaspiman/cosine_similarity"
 	"io"
 	"strconv"
 	"strings"
@@ -113,6 +115,37 @@ func NewFastTextInMem(dbFilename string) *FastText {
 	}
 }
 
+// BuildDB initialize the SQLite3 database by importing the word embeddings
+// from the .vec file downloaded from
+// https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md
+func (ft *FastText) BuildDB(wordEmbFile io.Reader) error {
+	_, err := ft.db.Exec(`
+	CREATE TABLE fasttext(
+		word TEXT UNIQUE,
+		emb BLOB
+	);`)
+	if err != nil {
+		return err
+	}
+	stmt, err := ft.db.Prepare(`INSERT INTO fasttext(word, emb) VALUES(?, ?);`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for emb := range readwordEmbdFile(wordEmbFile) {
+		binVec := vecToBytes(emb.Vec, ByteOrder)
+		if _, err := stmt.Exec(emb.Word, binVec); err != nil {
+			return err
+		}
+	}
+	// Indexing on words
+	_, err = ft.db.Exec(`CREATE INDEX ind_word ON fasttext(word);`)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Close must be called before finishing using this FastText
 // session.
 func (ft *FastText) Close() error {
@@ -155,35 +188,52 @@ func (ft *FastText) GetAllEmb() ([][]float64, error) {
 	return allEmbeddings, nil
 }
 
-// BuildDB initialize the SQLite3 database by importing the word embeddings
-// from the .vec file downloaded from
-// https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md
-func (ft *FastText) BuildDB(wordEmbFile io.Reader) error {
-	_, err := ft.db.Exec(`
-	CREATE TABLE fasttext(
-		word TEXT UNIQUE,
-		emb BLOB
-	);`)
+func (ft *FastText) mostSimilarEmbedding(queryEmbedding []float64) ([]float64, float64, error) {
+	embeddings, err := ft.GetAllEmb()
 	if err != nil {
-		return err
+		return nil, 0.0, err
 	}
-	stmt, err := ft.db.Prepare(`INSERT INTO fasttext(word, emb) VALUES(?, ?);`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-	for emb := range readwordEmbdFile(wordEmbFile) {
-		binVec := vecToBytes(emb.Vec, ByteOrder)
-		if _, err := stmt.Exec(emb.Word, binVec); err != nil {
-			return err
+	var highestSimilarity float64
+	var mostSimilar []float64
+
+	for _, v := range embeddings {
+		if equalEmbeddings(queryEmbedding, v) {
+			continue
+		}
+
+		similarity, err := cosine_similarity.Cosine(queryEmbedding, v)
+		if err != nil {
+			return nil, 0.0, err
+		}
+
+		if similarity > highestSimilarity {
+			highestSimilarity = similarity
+			mostSimilar = v
 		}
 	}
-	// Indexing on words
-	_, err = ft.db.Exec(`CREATE INDEX ind_word ON fasttext(word);`)
-	if err != nil {
-		return err
+
+	return mostSimilar, highestSimilarity, nil
+}
+
+// computes an embedding vector by taking the average of the embedding vectors of each word
+// in words
+func (ft *FastText) newMultiWordEmbedding(words []string) (vector.Vector, error) {
+	var multiWordEmbedding []float64
+	for i, v := range words {
+		embeddingVector, errEmbeddingVector := ft.GetEmb(v)
+		if errEmbeddingVector != nil {
+			return nil, errEmbeddingVector
+		}
+
+		if i != 0 {
+			multiWordEmbedding = vector.Add(multiWordEmbedding, embeddingVector)
+		} else {
+			multiWordEmbedding = embeddingVector
+		}
 	}
-	return nil
+	vec := vector.NewWithValues(multiWordEmbedding)
+	vec.Scale(1.0 / float64(len(words)))
+	return vec, nil
 }
 
 type wordEmb struct {

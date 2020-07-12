@@ -26,3 +26,12 @@ func bytesToVec(data []byte, order binary.ByteOrder) ([]float64, error) {
 	}
 	return vec, nil
 }
+
+func equalEmbeddings(a []float64, b []float64) bool {
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
