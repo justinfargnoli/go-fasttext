@@ -1,5 +1,5 @@
 /*
-Package fasttext provides a simple wrapper for working embedding vectors trained with Facebook's fastText library.
+Package fasttext provides a simple wrapper for working with embedding vectors trained with Facebook's fastText library.
 It allows fast look-up of word embeddings from persistent data store (SQLite3).
 
 Installation
