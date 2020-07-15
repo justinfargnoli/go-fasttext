@@ -152,6 +152,8 @@ func (ft *FastText) Close() error {
 }
 
 // EmbeddingVector returns the word embedding of the given word.
+//
+// todo: Modify the query to prevent SQL injection
 func (ft *FastText) EmbeddingVector(word string) ([]float64, error) {
 	var binVec []byte
 	err := ft.db.QueryRow(`SELECT emb FROM fasttext WHERE word=?;`, word).Scan(&binVec)
