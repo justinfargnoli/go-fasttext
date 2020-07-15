@@ -184,6 +184,10 @@ func (ft *FastText) AllEmbeddingVectors() ([][]float64, error) {
 		}
 		allEmbeddings = append(allEmbeddings, embedding)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	
 	return allEmbeddings, nil
 }
 
